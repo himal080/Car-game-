@@ -1,205 +1,397 @@
-<!DOCTYPE html>
+    <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no" />
 <title>Himal 3D Racing</title>
 <style>
-html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#0b0b0b;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;user-select:none;}
-#ui{position:absolute;left:12px;top:12px;z-index:10;color:#fff;text-shadow:0 2px 6px rgba(0,0,0,0.8);}
-#title{font-weight:700;font-size:18px;color:#ffd54f;margin-bottom:6px;}
-#scoreBox{background:rgba(0,0,0,0.35);padding:6px 10px;border-radius:8px;display:inline-block;font-weight:600;}
-#overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:11;background:linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6));color:#fff;flex-direction:column;}
-#startBtn,#restartBtn{margin-top:12px;padding:10px 18px;font-size:18px;border-radius:10px;border:0;background:#ffd54f;color:#111;cursor:pointer;box-shadow:0 6px #9a6b00;}
-#hint{margin-top:8px;font-size:13px;opacity:0.9;color:#ddd;}
-canvas{display:block;width:100%;height:100%;}
-#touchLeft,#touchRight{position:absolute;bottom:0;width:50%;height:35%;z-index:9;}
-#touchLeft{left:0;}#touchRight{right:0;}
-#gameOverPanel{background:rgba(0,0,0,0.6);padding:12px 16px;border-radius:10px;text-align:center;}
+  html,body{height:100%;margin:0;background:#0b0b0b;overflow:hidden;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;-webkit-user-select:none;user-select:none;}
+  #ui{position: absolute;left:12px;top:12px;z-index: 20;color:#fff;text-shadow:0 2px 6px rgba(0,0,0,0.7);}
+  #title{font-weight:700;font-size:18px;color:#ffd54f;margin-bottom:6px;}
+  #scoreBox{background: rgba(0,0,0,0.35);padding:6px 10px;border-radius:8px;font-weight:600;display:inline-block;}
+  #overlay{position: absolute;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;flex-direction:column;background:rgba(0,0,0,0.65);color:#fff}
+  #overlay h1{margin:0 0 8px 0;color:#ffd54f;font-size:24px;}
+  #overlay p{margin:0 0 12px 0;color:#ddd;}
+  .btn{padding:10px 20px;border-radius:8px;border:0;background:#ffd54f;color:#111;font-weight:700;font-size:16px;cursor:pointer}
+  #gameOverPanel{background:rgba(0,0,0,0.6);padding:14px;border-radius:10px;text-align:center;}
+  canvas{display:block;}
+  /* invisible touch zones */
+  #touchLeft, #touchRight{position:absolute;bottom:0;height:40%;width:50%;z-index:15;}
+  #touchLeft{left:0;} #touchRight{right:0;}
+  /* small responsive hint */
+  @media (max-width:600px){ #overlay h1{font-size:20px} #ui{left:8px;top:8px} }
 </style>
 </head>
 <body>
-<div id="ui">
-  <div id="title">🏁 Himal 3D Racing</div>
-  <div id="scoreBox">Score: <span id="score">0</span></div>
-</div>
+  <div id="ui">
+    <div id="title">🏁 Himal 3D Racing</div>
+    <div id="scoreBox">Score: <span id="score">0</span> &nbsp; | &nbsp; High: <span id="high">0</span></div>
+  </div>
 
-<div id="overlay">
-  <div style="font-size:22px;font-weight:700">Welcome to Himal 3D Racing</div>
-  <div id="hint">Tap left/right (mobile) or use ← → / A D to move</div>
-  <button id="startBtn">Start Race</button>
-</div>
+  <div id="overlay">
+    <h1>Welcome to Himal 3D Racing</h1>
+    <p>Tap left/right or use ← → / A D to move</p>
+    <button class="btn" id="startBtn">Start Game</button>
+  </div>
 
-<div id="touchLeft"></div>
-<div id="touchRight"></div>
+  <div id="touchLeft"></div>
+  <div id="touchRight"></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r125/three.min.js"></script>
-<script>
-let scene,camera,renderer,roadGroup,player,obstacles=[];
-let laneWidth=3,roadHalfWidth=6,speed=0.25,spawnInterval=90,frames=0,score=0,running=false;
-let overlay=document.getElementById('overlay'),scoreEl=document.getElementById('score');
-let startBtn=document.getElementById('startBtn'),touchLeft=document.getElementById('touchLeft'),touchRight=document.getElementById('touchRight');
-let highKey='himal3d_highscore',highScore=parseInt(localStorage.getItem(highKey))||0;
-let moveTargetX=0,lanes=[-roadHalfWidth+laneWidth,0,roadHalfWidth-laneWidth],currentLane=1;
-let roadTexts=[];
+  <!-- Three.js -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
 
-function init(){
-  scene=new THREE.Scene();
-  scene.fog=new THREE.FogExp2(0x070707,0.02);
+  <script>
+  // Full working Himal 3D Racing - single-file
+  // Place car.png (transparent top-view) and Himal.jpg (obstacle texture) in same folder.
 
-  camera=new THREE.PerspectiveCamera(60,window.innerWidth/window.innerHeight,0.1,1000);
-  camera.position.set(0,6,10);
-  camera.lookAt(0,1.6,0);
+  let scene, camera, renderer;
+  let player = null;
+  let roadGroup = null;
+  let obstacles = [];
+  let roadTexts = [];
+  const lanes = [-2.4, 0, 2.4]; // lane X positions
+  let currentLane = 1; // middle
+  let moveTargetX = lanes[currentLane];
+  let playing = false;
+  let frames = 0;
+  let score = 0;
+  let highScore = parseInt(localStorage.getItem('himal3d_highscore')) || 0;
+  document.getElementById('high').innerText = highScore;
 
-  renderer=new THREE.WebGLRenderer({antialias:true});
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
-  renderer.setSize(window.innerWidth,window.innerHeight);
-  document.body.appendChild(renderer.domElement);
+  // gameplay tuning
+  let baseSpeed = 0.28;      // base forward movement
+  let spawnInterval = 80;    // frames between spawns approx
+  let lastSpawnFrame = 0;
 
-  const ambient=new THREE.AmbientLight(0xffffff,0.6); scene.add(ambient);
-  const dir=new THREE.DirectionalLight(0xffffff,0.7); dir.position.set(5,10,5); scene.add(dir);
+  const scoreEl = document.getElementById('score');
+  const overlay = document.getElementById('overlay');
+  const startBtn = document.getElementById('startBtn');
+  const touchLeft = document.getElementById('touchLeft');
+  const touchRight = document.getElementById('touchRight');
 
-  makeRoad();
-  makePlayer();
+  function init() {
+    scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x070707, 0.008);
 
-  window.addEventListener('resize',onResize);
-  document.addEventListener('keydown',onKey);
-  touchLeft.addEventListener('touchstart',()=>moveLeft());
-  touchRight.addEventListener('touchstart',()=>moveRight());
-  renderer.domElement.addEventListener('pointerdown',onPointer);
-  startBtn.addEventListener('click',startGame);
-}
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 7, 11);
+    camera.lookAt(0, 2, 0);
 
-function makeRoad(){
-  roadGroup=new THREE.Group();
-  const roadGeo=new THREE.PlaneBufferGeometry(roadHalfWidth*2+2,1000);
-  const roadMat=new THREE.MeshStandardMaterial({color:0x222222});
-  const road=new THREE.Mesh(roadGeo,roadMat); road.rotation.x=-Math.PI/2; road.position.z=-450; roadGroup.add(road);
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x000000, 0); // transparent background (but we keep dark body)
+    document.body.appendChild(renderer.domElement);
 
-  // Stripes
-  const stripeGeo=new THREE.PlaneBufferGeometry(0.15,8);
-  const stripeMat=new THREE.MeshBasicMaterial({color:0xffffff});
-  for(let i=-200;i<200;i+=14){const s=new THREE.Mesh(stripeGeo,stripeMat); s.rotation.x=-Math.PI/2; s.position.set(0,0.01,i); roadGroup.add(s);}
+    // lights
+    const amb = new THREE.AmbientLight(0xffffff, 0.45);
+    const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+    dir.position.set(5, 10, 5);
+    scene.add(amb, dir);
 
-  // Borders
-  const borderGeo=new THREE.PlaneBufferGeometry(0.4,1000);
-  const borderMat=new THREE.MeshBasicMaterial({color:0xffffff});
-  const bl=new THREE.Mesh(borderGeo,borderMat); bl.rotation.x=-Math.PI/2; bl.position.set(-roadHalfWidth-0.5,0.02,-450); roadGroup.add(bl);
-  const br=new THREE.Mesh(borderGeo,borderMat); br.rotation.x=-Math.PI/2; br.position.set(roadHalfWidth+0.5,0.02,-450); roadGroup.add(br);
+    makeRoad();
+    makePlayer(); // loads car texture asynchronously
 
-  // Ground
-  const groundGeo=new THREE.PlaneBufferGeometry(1000,1000);
-  const groundMat=new THREE.MeshStandardMaterial({color:0x0b3a2e});
-  const ground=new THREE.Mesh(groundGeo,groundMat); ground.rotation.x=-Math.PI/2; ground.position.y=-0.01; ground.position.z=-450; scene.add(ground);
+    window.addEventListener('resize', onResize);
+    window.addEventListener('keydown', onKey);
+    renderer.domElement.addEventListener('pointerdown', onPointer);
 
-  // "HIMAL" on left-middle and right-middle lanes
-  const canvas=new OffscreenCanvas(128,32);
-  const ctx=canvas.getContext('2d');
-  ctx.fillStyle='white'; ctx.font='28px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.fillText('HIMAL',64,16);
-  const tex=new THREE.CanvasTexture(canvas);
-  const textGeo=new THREE.PlaneBufferGeometry(2,0.5);
+    // touch zones
+    touchLeft.addEventListener('touchstart', (e) => { e.preventDefault(); moveLeft(); }, {passive:false});
+    touchRight.addEventListener('touchstart', (e) => { e.preventDefault(); moveRight(); }, {passive:false});
 
-  for(let z=-200; z<200; z+=14){
-    const textMatL=new THREE.MeshBasicMaterial({map:tex,transparent:true});
-    const tL=new THREE.Mesh(textGeo,textMatL);
-    tL.rotation.x=-Math.PI/2; tL.position.set(-laneWidth*0.5,0.02,z);
-    roadGroup.add(tL); roadTexts.push(tL);
-
-    const textMatR=new THREE.MeshBasicMaterial({map:tex,transparent:true});
-    const tR=new THREE.Mesh(textGeo,textMatR);
-    tR.rotation.x=-Math.PI/2; tR.position.set(laneWidth*0.5,0.02,z);
-    roadGroup.add(tR); roadTexts.push(tR);
+    startBtn.addEventListener('click', startGame);
   }
 
-  scene.add(roadGroup);
-}
+  function makeRoad() {
+    roadGroup = new THREE.Group();
 
-function makePlayer(){
-  const g=new THREE.BoxBufferGeometry(1.1,0.6,2.2);
-  const mats=[]; for(let i=0;i<6;i++){ mats.push(new THREE.MeshStandardMaterial({color:0xff3d00,metalness:0.3,roughness:0.6})); }
-  player=new THREE.Mesh(g,mats); player.position.set(lanes[currentLane],0.6,6); player.castShadow=true; scene.add(player); moveTargetX=player.position.x;
+    // road plane
+    const roadWidth = 8;
+    const roadLength = 2000;
+    const roadGeo = new THREE.PlaneGeometry(roadWidth, roadLength);
+    const roadMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+    const roadMesh = new THREE.Mesh(roadGeo, roadMat);
+    roadMesh.rotation.x = -Math.PI / 2;
+    roadMesh.position.z = -roadLength / 2 + 100; // extend ahead
+    roadGroup.add(roadMesh);
 
-  const loader=new THREE.TextureLoader();
-  loader.load('car.png',function(tex){
-    tex.wrapS=THREE.ClampToEdgeWrapping; tex.wrapT=THREE.ClampToEdgeWrapping;
-    const topMat=new THREE.MeshStandardMaterial({map:tex,metalness:0.3,roughness:0.6});
-    mats[2]=topMat; player.material=mats; player.material.needsUpdate=true;
-  },undefined,function(){console.warn('car.png failed to load — put it in same folder as index.html');});
-}
+    // center stripes
+    const stripeGeo = new THREE.PlaneGeometry(0.18, 8);
+    const stripeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    for (let z = -1000; z <= 1000; z += 14) {
+      const s = new THREE.Mesh(stripeGeo, stripeMat);
+      s.rotation.x = -Math.PI / 2;
+      s.position.set(0, 0.01, z);
+      roadGroup.add(s);
+    }
 
-function spawnObstacle(){
-  const lane=Math.floor(Math.random()*3);
-  const g=new THREE.BoxBufferGeometry(1.1,0.6,2.2);
-  const loader=new THREE.TextureLoader();
-  loader.load('Himal.jpg', function(tex){
-    tex.wrapS = THREE.ClampToEdgeWrapping;
-    tex.wrapT = THREE.ClampToEdgeWrapping;
-    const m=new THREE.MeshStandardMaterial({map: tex, metalness:0.2, roughness:0.6});
-    const car=new THREE.Mesh(g,m);
-    car.position.set(lanes[lane],0.6,-120);
-    car.userData={lane,speed:speed+Math.random()*0.12};
-    scene.add(car); obstacles.push(car);
-  }, undefined, function(){console.warn('flag.png failed to load — put it in same folder as index.html'); });
-}
+    // road borders (left & right)
+    const borderGeo = new THREE.PlaneGeometry(0.4, 2000);
+    const borderMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const bl = new THREE.Mesh(borderGeo, borderMat); bl.rotation.x = -Math.PI / 2; bl.position.set(-roadWidth/2 - 0.5, 0.02, 0);
+    const br = new THREE.Mesh(borderGeo, borderMat); br.rotation.x = -Math.PI / 2; br.position.set( roadWidth/2 + 0.5, 0.02, 0);
+    roadGroup.add(bl, br);
 
-function checkCollision(a,b){ const ab=new THREE.Box3().setFromObject(a); const bb=new THREE.Box3().setFromObject(b); return ab.intersectsBox(bb); }
+    // side ground
+    const groundGeo = new THREE.PlaneGeometry(5000, 5000);
+    const groundMat = new THREE.MeshStandardMaterial({ color: 0x0b3a2e });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -0.01;
+    ground.position.z = -500;
+    scene.add(ground);
 
-function onKey(e){if(!running)return;if(e.key==='ArrowLeft'||e.key==='a'||e.key==='A')moveLeft(); if(e.key==='ArrowRight'||e.key==='d'||e.key==='D')moveRight();}
-function onPointer(e){if(!running)return; const x=e.clientX;if(x<window.innerWidth/2)moveLeft(); else moveRight();}
-function moveLeft(){if(currentLane>0){currentLane--; moveTargetX=lanes[currentLane];}}
-function moveRight(){if(currentLane<2){currentLane++; moveTargetX=lanes[currentLane];}}
+    // create repeated text planes ("HIMAL") positioned in left-middle and right-middle (inside lanes)
+    const canvas = document.createElement('canvas');
+    canvas.width = 256; canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle = 'white';
+    ctx.font = 'bold 48px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('HIMAL', canvas.width/2, canvas.height/2);
 
-function startGame(){overlay.style.display='none';score=0;frames=0;speed=0.25;spawnInterval=90;obstacles.forEach(o=>scene.remove(o));obstacles=[];currentLane=1;moveTargetX=lanes[currentLane];player.position.set(moveTargetX,0.6,6);running=true;animate();}
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
 
-function endGame(){
-  running=false;
-  overlay.style.display='flex';
-  overlay.innerHTML=`<div id="gameOverPanel">
-      <div style="font-size:22px;font-weight:800;">💥 Game Over</div>
-      <div style="margin-top:10px;">Your score: <strong>${score}</strong></div>
-      <div style="margin-top:6px;">High score: <strong>${highScore}</strong></div>
-      <button id="restartBtn">Restart</button>
-    </div>`;
-  const btn=document.getElementById('restartBtn'); btn.addEventListener('click',()=>{ location.reload(); });
-  if(score>highScore){ highScore=score; localStorage.setItem(highKey,highScore); }
-}
+    const textGeo = new THREE.PlaneGeometry(2.6, 0.6);
 
-function animate(){
-  if(!running)return;
-  frames++;
-  if(frames%Math.max(40,spawnInterval-Math.floor(score/6))===0){ spawnObstacle(); }
+    // place repeated along Z
+    for (let z = -1000; z <= 1000; z += 14) {
+      // left-side (slightly inside left lane - between left lane and center)
+      const matL = new THREE.MeshBasicMaterial({ map: tex, transparent: true });
+      const tL = new THREE.Mesh(textGeo, matL);
+      tL.rotation.x = -Math.PI / 2;
+      tL.position.set(-1.4, 0.02, z); // X = -1.4 inside left middle
+      roadGroup.add(tL);
+      roadTexts.push(tL);
 
-  obstacles.forEach((o,idx)=>{
-    o.position.z+=(speed+(score*0.003)+o.userData.speed*0.5);
-    if(o.position.z>20){ scene.remove(o); obstacles.splice(idx,1); score++; scoreEl.innerText=score; }
-    if(checkCollision(player,o)){ endGame(); }
-  });
+      // right-side (slightly inside right lane)
+      const matR = new THREE.MeshBasicMaterial({ map: tex, transparent: true });
+      const tR = new THREE.Mesh(textGeo, matR);
+      tR.rotation.x = -Math.PI / 2;
+      tR.position.set( 1.4, 0.02, z);
+      roadGroup.add(tR);
+      roadTexts.push(tR);
+    }
 
-  // Scroll road texts
-  roadTexts.forEach(t=>{
-    t.position.z+=0.8+speed;
-    if(t.position.z>200) t.position.z-=400;
-  });
+    scene.add(roadGroup);
+  }
 
-  roadGroup.children.forEach((child)=>{
-    if(child.geometry && child.geometry.parameters && child.geometry.parameters.height===1000)return;
-    child.position.z+=0.8+speed;
-    if(child.position.z>200)child.position.z-=400;
-  });
+  function makePlayer() {
+    // create box and placeholder materials
+    const g = new THREE.BoxGeometry(1.15, 0.6, 2.2);
+    const mats = [];
+    for (let i = 0; i < 6; i++) mats.push(new THREE.MeshStandardMaterial({ color: 0xff3d00 }));
 
-  player.position.x+=(moveTargetX-player.position.x)*0.18;
-  player.rotation.z=(moveTargetX-player.position.x)*0.15;
-  camera.position.x+=(player.position.x-camera.position.x)*0.08;
-  camera.position.y=6+Math.sin(frames*0.02)*0.06;
+    player = new THREE.Mesh(g, mats);
+    player.position.set(lanes[currentLane], 1.0, 6); // lift Y to 1.0 so it's visible turning
+    player.scale.set(1.05, 1.05, 1.05);
+    scene.add(player);
 
-  renderer.render(scene,camera);
-  requestAnimationFrame(animate);
-}
+    // apply top texture (car.png) to the +Y face (index 2 in Three.js box material order)
+    const loader = new THREE.TextureLoader();
+    loader.load('car.png',
+      (tex) => {
+        tex.wrapS = THREE.ClampToEdgeWrapping;
+        tex.wrapT = THREE.ClampToEdgeWrapping;
+        const topMat = new THREE.MeshStandardMaterial({ map: tex, metalness: 0.25, roughness: 0.6, transparent: true });
+        // Keep other faces as existing color; set top face at index 2
+        mats[2] = topMat;
+        player.material = mats;
+        player.material.needsUpdate = true;
+      },
+      undefined,
+      () => { console.warn('car.png failed to load — put car.png in same folder'); }
+    );
+  }
 
-function onResize(){ camera.aspect=window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth,window.innerHeight); }
+  function spawnObstacle() {
+    const laneIndex = Math.floor(Math.random() * 3); // 0..2
+    const g = new THREE.BoxGeometry(1.1, 0.6, 2.2);
+    const loader = new THREE.TextureLoader();
+    loader.load('Himal.jpg',
+      (tex) => {
+        tex.wrapS = THREE.ClampToEdgeWrapping;
+        tex.wrapT = THREE.ClampToEdgeWrapping;
+        const m = new THREE.MeshStandardMaterial({ map: tex, metalness: 0.18, roughness: 0.6, transparent: true });
+        const ob = new THREE.Mesh(g, m);
+        ob.position.set(lanes[laneIndex], 0.6, -120 - Math.random()*40); // spawn ahead
+        ob.userData = { speed: baseSpeed + Math.random() * 0.12 };
+        scene.add(ob);
+        obstacles.push(ob);
+      },
+      undefined,
+      () => { console.warn('Himal.jpg failed to load — put Himal.jpg in same folder'); }
+    );
+  }
 
-init();
-</script>
+  function onKey(e) {
+    if (!playing) return;
+    if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') moveLeft();
+    if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') moveRight();
+  }
+
+  function onPointer(e) {
+    if (!playing) return;
+    const x = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] && e.touches[0].clientX) || window.innerWidth/2;
+    if (x < window.innerWidth / 2) moveLeft(); else moveRight();
+  }
+
+  function moveLeft() {
+    if (currentLane > 0) {
+      currentLane--;
+      moveTargetX = lanes[currentLane];
+    }
+  }
+  function moveRight() {
+    if (currentLane < 2) {
+      currentLane++;
+      moveTargetX = lanes[currentLane];
+    }
+  }
+
+  function startGame() {
+    overlay.style.display = 'none';
+    playing = true;
+    frames = 0;
+    score = 0;
+    scoreEl.innerText = '0';
+    // remove old obstacles
+    obstacles.forEach(o => scene.remove(o));
+    obstacles = [];
+    lastSpawnFrame = 0;
+    currentLane = 1;
+    moveTargetX = lanes[currentLane];
+    if (player) player.position.x = moveTargetX;
+    // spawn a few early obstacles a little later automatically
+  }
+
+  function endGame() {
+    playing = false;
+    // update high score
+    if (score > highScore) {
+      highScore = score;
+      localStorage.setItem('himal3d_highscore', highScore);
+      document.getElementById('high').innerText = highScore;
+    }
+    // show overlay with score and restart button
+    overlay.innerHTML = '';
+    const panel = document.createElement('div');
+    panel.id = 'gameOverPanel';
+    panel.innerHTML = `<div style="font-size:20px;font-weight:800;margin-bottom:8px;">💥 Game Over</div>
+      <div style="margin-bottom:8px;">Your score: <strong>${score}</strong></div>
+      <div style="margin-bottom:12px;">High score: <strong>${highScore}</strong></div>
+      <button class="btn" id="restartBtn">Restart</button>`;
+    overlay.appendChild(panel);
+    overlay.style.display = 'flex';
+    document.getElementById('restartBtn').addEventListener('click', () => {
+      // restore initial overlay content and start
+      overlay.innerHTML = `<h1>Welcome to Himal 3D Racing</h1>
+        <p>Tap left/right or use ← → / A D to move</p>
+        <button class="btn" id="startBtn">Start Game</button>`;
+      overlay.querySelector('#startBtn').addEventListener('click', startGame);
+      document.getElementById('score').innerText = '0';
+    });
+  }
+
+  function checkCollisionsAndUpdate() {
+    // move obstacles forward and check collisions
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+      const ob = obstacles[i];
+      ob.position.z += (ob.userData.speed * 2 + baseSpeed * 6) * 0.02 * 10; // tuned movement
+      // collision approx with AABB
+      if (player) {
+        const pb = new THREE.Box3().setFromObject(player);
+        const obb = new THREE.Box3().setFromObject(ob);
+        if (pb.intersectsBox(obb)) {
+          endGame();
+          return;
+        }
+      }
+      // if passed behind camera, remove and increment score
+      if (ob.position.z > 20) {
+        scene.remove(ob);
+        obstacles.splice(i, 1);
+        score++;
+        scoreEl.innerText = score;
+      }
+    }
+  }
+
+  function animate() {
+    requestAnimationFrame(animate);
+    if (!renderer) return;
+
+    // always smoothly lerp player X toward target
+    if (player) {
+      player.position.x += (moveTargetX - player.position.x) * 0.18;
+      // slight tilt for feel
+      player.rotation.z = (moveTargetX - player.position.x) * 0.16;
+    }
+
+    if (playing) {
+      frames++;
+
+      // spawn obstacles periodically (with some randomness)
+      if (frames - lastSpawnFrame > spawnInterval - Math.floor(score / 6)) {
+        if (Math.random() > 0.15) spawnObstacle(); // slight randomness
+        lastSpawnFrame = frames;
+      }
+
+      // update obstacles and score
+      checkCollisionsAndUpdate();
+
+      // scroll road stripes and HIMAL texts
+      roadGroup.children.forEach(child => {
+        // strip and text movement: slightly move z forward and wrap
+        if (child.position && child.geometry) {
+          // large plane (ground) skip re-wrapping
+          if (child.geometry.parameters && child.geometry.parameters.height && child.geometry.parameters.height > 300) return;
+          child.position.z += 0.8 + baseSpeed;
+          if (child.position.z > 1000) child.position.z -= 2000;
+        }
+      });
+
+      // also animate separately stored roadTexts in case they need different speed
+      roadTexts.forEach(t => {
+        t.position.z += 0.8 + baseSpeed;
+        if (t.position.z > 1000) t.position.z -= 2000;
+      });
+
+      // gradually increase difficulty
+      if (frames % 600 === 0) baseSpeed += 0.02;
+    }
+
+    // camera subtle follow and bob
+    if (camera && player) {
+      camera.position.x += (player.position.x - camera.position.x) * 0.08;
+      camera.position.y = 7 + Math.sin(frames * 0.015) * 0.06;
+      camera.lookAt(player.position.x, 2, player.position.z - 6);
+    }
+
+    renderer.render(scene, camera);
+  }
+
+  function onResize() {
+    if (!camera || !renderer) return;
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+
+  // start-init
+  init();
+  animate();
+
+  // Expose simple controls for outer scope (optional)
+  window.moveLeft = moveLeft;
+  window.moveRight = moveRight;
+  window.startGame = startGame;
+  window.restart = () => { location.reload(); };
+
+  </script>
 </body>
 </html>
